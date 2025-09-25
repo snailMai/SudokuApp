@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>数独校验</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 16px; background: #f6f7fb; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .board { display: grid; grid-template-columns: repeat(9, 40px); grid-template-rows: repeat(9, 40px); border: 2px solid #000; width: fit-content; background: #000; }
+    .cell { width: 40px; height: 40px; border: 1px solid #bbb; background: #fff; }
+    .cell input { width: 100%; height: 100%; text-align: center; border: none; outline: none; background: transparent; font-size: 18px; color: #1a1a1a; }
+    .cell input:disabled { color: #0d47a1; background: #eef5ff; font-weight: 700; }
+    .cell.r0, .cell.r3, .cell.r6 { border-top: 2px solid #000; }
+    .cell.c0, .cell.c3, .cell.c6 { border-left: 2px solid #000; }
+    .cell.r8 { border-bottom: 2px solid #000; }
+    .cell.c8 { border-right: 2px solid #000; }
+    .toolbar { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button { padding: 8px 12px; border: 1px solid #0d47a1; background: #1565c0; color: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .msg { margin-top: 10px; min-height: 20px; font-size: 14px; }
+    .note { margin-top: 8px; color: #666; font-size: 12px; }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const VERIFY_API = '/api/sudoku/verify';
+      const SAMPLE = [
+        [5,3,0,0,7,0,0,0,0],
+        [6,0,0,1,9,5,0,0,0],
+        [0,9,8,0,0,0,0,6,0],
+        [8,0,0,0,6,0,0,0,3],
+        [4,0,0,8,0,3,0,0,1],
+        [7,0,0,0,2,0,0,0,6],
+        [0,6,0,0,0,0,2,8,0],
+        [0,0,0,4,1,9,0,0,5],
+        [0,0,0,0,8,0,0,7,9]
+      ];
+
+      const board = document.getElementById('board');
+      const btn = document.getElementById('verifyBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const sampleBtn = document.getElementById('sampleBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const replaceBtn = document.getElementById('replaceBtn');
+      const msg = document.getElementById('msg');
+
+      function renderBoard() {
+        board.innerHTML = '';
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            const cell = document.createElement('div');
+            cell.className = `cell r${r} c${c}`;
+            const input = document.createElement('input');
+            input.setAttribute('inputmode', 'numeric');
+            input.setAttribute('maxlength', '1');
+            input.addEventListener('input', e => {
+              e.target.value = e.target.value.replace(/[^1-9]/g, '').slice(0, 1);
+            });
+            input.addEventListener('keydown', e => {
+              if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Tab' || e.key.startsWith('Arrow')) return;
+              if (!/^[1-9]$/.test(e.key)) { if (e.key.length === 1) e.preventDefault(); }
+            });
+            cell.appendChild(input);
+            board.appendChild(cell);
+          }
+        }
+      }
+
+      function loadPuzzle(arr) {
+        const inputs = board.querySelectorAll('input');
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            const idx = r * 9 + c;
+            const v = arr[r][c];
+            const input = inputs[idx];
+            if (v === 0) { input.value = ''; input.disabled = false; }
+            else { input.value = String(v); input.disabled = true; }
+          }
+        }
+      }
+
+      function readBoard() {
+        const inputs = board.querySelectorAll('input');
+        const grid = Array.from({ length: 9 }, () => Array(9).fill(0));
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            const idx = r * 9 + c;
+            const v = inputs[idx].value.trim();
+            grid[r][c] = v === '' ? 0 : Number(v);
+          }
+        }
+        return grid;
+      }
+
+      async function verify() {
+        msg.textContent = '';
+        btn.disabled = true;
+        try {
+          const grid = readBoard();
+          const res = await fetch(VERIFY_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ board: grid })
+          });
+          const data = await res.json();
+          if (data.ok) { msg.style.color = '#1b5e20'; msg.textContent = data.message || '校验通过'; }
+          else { msg.style.color = '#b71c1c'; msg.textContent = data.message || '校验不通过'; }
+        } catch (e) {
+          msg.style.color = '#b71c1c';
+          msg.textContent = e?.message || String(e);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      function clearEditable() {
+        const inputs = board.querySelectorAll('input:not(:disabled)');
+        inputs.forEach(i => i.value = '');
+      }
+
+      // 刷新：仅清理用户输入，不修改预置（禁用）的格子
+      function clearAll() {
+        const inputs = board.querySelectorAll('input:not(:disabled)');
+        inputs.forEach(i => { i.value = ''; });
+      }
+
+      async function replaceSample() {
+        try {
+          const res = await fetch('/api/sudoku/sample/refresh');
+          const data = await res.json();
+          if (data && data.ok && Array.isArray(data.board)) {
+            loadPuzzle(data.board);
+            msg.style.color = '#1b5e20';
+            msg.textContent = data.message || '已加载新的示例题';
+          } else {
+            msg.style.color = '#b71c1c';
+            msg.textContent = (data && data.message) || '未获取到有效示例';
+          }
+        } catch (e) {
+          msg.style.color = '#b71c1c';
+          msg.textContent = e?.message || String(e);
+        }
+      }
+
+      renderBoard();
+      loadPuzzle(SAMPLE);
+      btn.addEventListener('click', verify);
+      clearBtn.addEventListener('click', clearEditable);
+      sampleBtn.addEventListener('click', () => loadPuzzle(SAMPLE));
+      refreshBtn.addEventListener('click', clearAll);
+      replaceBtn.addEventListener('click', replaceSample);
+    });
+  </script>
+  </head>
+<body>
+  <h1>数独校验</h1>
+  <div id="board" class="board" aria-label="数独棋盘"></div>
+  <div class="toolbar">
+    <button id="verifyBtn">发送到后端校验</button>
+    <button id="clearBtn">清空</button>
+    <button id="sampleBtn">装载示例</button>
+    <button id="refreshBtn">刷新</button>
+    <button id="replaceBtn">替换</button>
+  </div>
+  <div id="msg" class="msg"></div>
+  <div class="note">提示：输入 1-9，空格留空。点击按钮向 /api/sudoku/verify 发送 JSON。</div>
+</body>
+</html>
+
+
