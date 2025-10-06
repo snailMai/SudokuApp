@@ -8,13 +8,27 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 16px; background: #f6f7fb; }
     h1 { font-size: 20px; margin: 0 0 12px; }
     .board { display: grid; grid-template-columns: repeat(9, 40px); grid-template-rows: repeat(9, 40px); border: 2px solid #000; width: fit-content; background: #000; }
-    .cell { width: 40px; height: 40px; border: 1px solid #bbb; background: #fff; }
+    .cell { 
+      width: 40px; 
+      height: 40px; 
+      border: 1px solid #bbb; 
+      background: #fff; 
+      border-right: 1px solid #bbb; 
+      border-bottom: 1px solid #bbb; 
+    }
     .cell input { width: 100%; height: 100%; text-align: center; border: none; outline: none; background: transparent; font-size: 18px; color: #1a1a1a; }
     .cell input:disabled { color: #0d47a1; background: #eef5ff; font-weight: 700; }
+    /* 九宫格分隔线 - 粗边框 */
     .cell.r0, .cell.r3, .cell.r6 { border-top: 2px solid #000; }
     .cell.c0, .cell.c3, .cell.c6 { border-left: 2px solid #000; }
     .cell.r8 { border-bottom: 2px solid #000; }
     .cell.c8 { border-right: 2px solid #000; }
+    .cell.error { background: #ffebee !important; }
+    .cell.error input { background: #ffebee !important; color: #d32f2f !important; font-weight: bold !important; }
+    .cell.error.r0, .cell.error.r3, .cell.error.r6 { border-top: 2px solid #f44336 !important; }
+    .cell.error.c0, .cell.error.c3, .cell.error.c6 { border-left: 2px solid #f44336 !important; }
+    .cell.error.r8 { border-bottom: 2px solid #f44336 !important; }
+    .cell.error.c8 { border-right: 2px solid #f44336 !important; }
     .toolbar { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
     button { padding: 8px 12px; border: 1px solid #0d47a1; background: #1565c0; color: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; }
     .msg { margin-top: 10px; min-height: 20px; font-size: 14px; }
@@ -49,6 +63,8 @@
           for (let c = 0; c < 9; c++) {
             const cell = document.createElement('div');
             cell.className = `cell r${r} c${c}`;
+            cell.setAttribute('data-position', `${r + 1}_${c + 1}`);
+            
             const input = document.createElement('input');
             input.setAttribute('inputmode', 'numeric');
             input.setAttribute('maxlength', '1');
@@ -59,6 +75,12 @@
               if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Tab' || e.key.startsWith('Arrow')) return;
               if (!/^[1-9]$/.test(e.key)) { if (e.key.length === 1) e.preventDefault(); }
             });
+            
+            // 添加点击事件取消高亮
+            cell.addEventListener('click', () => {
+              clearErrorHighlight();
+            });
+            
             cell.appendChild(input);
             board.appendChild(cell);
           }
@@ -66,6 +88,7 @@
       }
 
       function loadPuzzle(arr) {
+        clearErrorHighlight();
         const inputs = board.querySelectorAll('input');
         for (let r = 0; r < 9; r++) {
           for (let c = 0; c < 9; c++) {
@@ -94,16 +117,40 @@
       async function verify() {
         msg.textContent = '';
         btn.disabled = true;
+        clearErrorHighlight(); // 清除之前的高亮
+        
         try {
           const grid = readBoard();
+          // 转换为 {行_列: 值} 格式
+          const boardData = {};
+          for (let r = 0; r < 9; r++) {
+            for (let c = 0; c < 9; c++) {
+              const value = grid[r][c];
+              if (value !== 0) { // 只发送非零值
+                boardData[`${r + 1}_${c + 1}`] = value;
+              }
+            }
+          }
+          
           const res = await fetch(VERIFY_API, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ board: grid })
+            body: JSON.stringify(boardData)
           });
           const data = await res.json();
-          if (data.ok) { msg.style.color = '#1b5e20'; msg.textContent = data.message || '校验通过'; }
-          else { msg.style.color = '#b71c1c'; msg.textContent = data.message || '校验不通过'; }
+          
+          if (data.ok) { 
+            msg.style.color = '#1b5e20'; 
+            msg.textContent = data.message || '校验通过'; 
+          } else { 
+            msg.style.color = '#b71c1c'; 
+            msg.textContent = data.message || '校验不通过';
+            
+            // 如果有错误位置信息，高亮显示
+            if (data.errorPositions && data.errorPositions.length > 0) {
+              highlightErrorPositions(data.errorPositions, data.errorNumber);
+            }
+          }
         } catch (e) {
           msg.style.color = '#b71c1c';
           msg.textContent = e?.message || String(e);
@@ -111,19 +158,43 @@
           btn.disabled = false;
         }
       }
+      
+      // 高亮显示错误位置
+      function highlightErrorPositions(errorPositions, errorNumber) {
+        errorPositions.forEach(position => {
+          const cell = board.querySelector(`[data-position="${position}"]`);
+          if (cell) {
+            cell.classList.add('error');
+            // 添加错误数字提示
+            cell.setAttribute('title', `重复数字: ${errorNumber}`);
+          }
+        });
+      }
+      
+      // 清除错误高亮
+      function clearErrorHighlight() {
+        const errorCells = board.querySelectorAll('.error');
+        errorCells.forEach(cell => {
+          cell.classList.remove('error');
+          cell.removeAttribute('title');
+        });
+      }
 
       function clearEditable() {
+        clearErrorHighlight();
         const inputs = board.querySelectorAll('input:not(:disabled)');
         inputs.forEach(i => i.value = '');
       }
 
       // 刷新：仅清理用户输入，不修改预置（禁用）的格子
       function clearAll() {
+        clearErrorHighlight();
         const inputs = board.querySelectorAll('input:not(:disabled)');
         inputs.forEach(i => { i.value = ''; });
       }
 
       async function replaceSample() {
+        clearErrorHighlight();
         try {
           const res = await fetch('/api/sudoku/sample/refresh');
           const data = await res.json();
@@ -162,7 +233,7 @@
     <button id="replaceBtn">替换</button>
   </div>
   <div id="msg" class="msg"></div>
-  <div class="note">提示：输入 1-9，空格留空。点击按钮向 /api/sudoku/verify 发送 JSON。</div>
+  <div class="note">提示：输入 1-9，空格留空。点击按钮向 /api/sudoku/verify 发送 JSON 格式：{"1_1":1, "1_2":2, ...}</div>
 </body>
 </html>
 

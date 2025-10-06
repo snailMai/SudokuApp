@@ -9,7 +9,7 @@
 mvn spring-boot:run
 ```
 
-启动后访问：`http://localhost:8080/` 打开前端页面。
+启动后访问：`http://localhost:8081/` 打开前端页面。
 
 ## 接口
 - POST `/api/sudoku/verify`
@@ -25,5 +25,6 @@ mvn spring-boot:run
 ## 前端
 - `src/main/resources/static/index.html` 内置 9x9 网格、输入限制、示例题与清空按钮。
 - 按钮会向后端发送 JSON 进行校验。
+
 
 

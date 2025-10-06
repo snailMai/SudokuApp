@@ -1,5 +1,5 @@
+com\example\sudoku\controller\VerifyResponse.class
 com\example\sudoku\config\CorsConfig.class
 com\example\sudoku\controller\SudokuController.class
 com\example\sudoku\SudokuApplication.class
 com\example\sudoku\controller\VerifyRequest.class
-com\example\sudoku\controller\VerifyResponse.class
